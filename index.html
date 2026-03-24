@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Issue Log Fixer → TSV for Feishu</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<header>
+  <h1>Issue Log Fixer → TSV (Feishu-friendly)</h1>
+  <p>
+    Paste raw logs → review parsed rows → edit if needed → generate TSV → paste into Feishu.
+    Keeps Device Type → Quality(empty) → Device No.
+  </p>
+
+  <div class="smallRow" style="margin-bottom:8px; justify-content:flex-start;">
+    <span class="badge">
+      <span id="rawDot" class="dot"></span>
+      Raw input
+      <span id="rowCount" class="counter" style="margin-left:10px;">Raw: 0 · Preview: 0 · Output: 0</span>
+    </span>
+  </div>
+
+  <div class="smallRow" style="margin-bottom:8px;">
+    <span class="badge"><span id="outDot" class="dot"></span>Output</span>
+    <span id="warnText" class="counter"></span>
+  </div>
+
+  <details class="rulesPanel">
+    <summary>Rules (click to expand)</summary>
+    <div class="rulesBody">
+      <ul>
+        <li>Input format: <code>Device number. message. HH:MM</code></li>
+        <li>209 → Robot // H1xx/ → Work Station // H2xx/ → Tally Station // CSxxx/ → Charging Station // PPPOxxx/ → Material box // BigLoop → Conveyor Line</li>
+        <li>Device number must be before the first dot.</li>
+        <li>Always use standard error wording when possible.</li>
+        <li>Always end with time in format HH:MM.</li>
+        <li>Do not write device numbers inside the sentence body.</li>
+        <li>Shift stats auto-reset logically by shift at <b>06:00</b> and <b>18:00</b>.</li>
+        <li>Generating the same TSV again will <b>not</b> count stats twice.</li>
+      </ul>
+    </div>
+  </details>
+
+  <div class="smallRow" style="margin-top:8px;">
+    <span class="badge"><span id="shiftDot" class="dot ok"></span>Shift rows</span>
+    <span class="counter">
+      <span id="shiftLabel">—</span>
+      · Total: <b id="shiftTotal">0</b>
+      <button id="resetRows" type="button" style="margin-left:10px; padding:4px 8px; font-size:12px;">Reset rows</button>
+    </span>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1) Raw input + review</h2>
+    <div class="body">
+      <div class="row" style="margin-bottom:10px;">
+        <label>
+          <div class="small">Date (YYYY/MM/DD)</div>
+          <input id="date" value="" placeholder="YYYY/MM/DD" />
+        </label>
+        <label>
+          <div class="small">Default Device Type</div>
+          <input id="deviceType" value="K50H" />
+        </label>
+        <label>
+          <div class="small">Default Status</div>
+          <input id="status" value="已处理Processed" />
+        </label>
+        <label>
+          <div class="small">Default Temporary measures</div>
+          <input id="tempMeasures" value="Recovery." />
+        </label>
+      </div>
+
+      <textarea id="raw" placeholder="Paste raw log here..."></textarea>
+
+      <div class="btns">
+        <button class="primary" id="previewBtn" type="button">Preview / Review</button>
+        <button class="primary" id="gen" type="button">Generate TSV</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="loadExample" type="button">Load example</button>
+      </div>
+
+      <div class="small warn">
+        If you put this HTML into Feishu/Wiki/Docs, scripts are blocked and buttons won’t work.
+        Open it as a local file: <code>file:///...</code> or host it as a normal HTML page.
+      </div>
+
+      <div id="validationSummary" class="issueBox" style="display:none;"></div>
+
+      <div id="issuesPanel" class="reviewPanel" style="display:none;">
+        <div class="reviewHead">
+          <div>
+            <b>Review & validation</b>
+            <span class="counter" id="issuesCount" style="margin-left:8px;">0 item(s)</span>
+          </div>
+          <div></div>
+        </div>
+
+        <div id="issuesSummary" style="padding:10px 12px; border-bottom:1px solid #1f2230; display:none;"></div>
+
+        <div id="templateSuggestionHint" class="small" style="padding:10px 12px; border-bottom:1px solid #1f2230; display:none;">
+          Suggested templates will appear for rows that are fallback, ambiguous, or partially matched.
+        </div>
+
+        <div id="issuesList" class="reviewBody"></div>
+      </div>
+
+      <div id="editPanel" class="editPanel">
+        <div class="editHead">
+          <div>
+            <b>Edit preview row</b>
+            <span id="editMeta" class="counter" style="margin-left:8px;">—</span>
+          </div>
+          <div class="btns" style="margin-top:0;">
+            <button id="applyEdit" class="good" type="button">Apply changes</button>
+            <button id="cancelEdit" type="button">Close</button>
+          </div>
+        </div>
+
+        <div class="editBody">
+          <div class="row">
+            <label>
+              <div class="small">Device Type</div>
+              <input id="editDeviceType" />
+            </label>
+            <label>
+              <div class="small">Device No</div>
+              <input id="editDeviceNo" />
+            </label>
+            <label>
+              <div class="small">Minutes</div>
+              <input id="editMinutes" />
+            </label>
+            <label>
+              <div class="small">Start Time</div>
+              <input id="editStartTime" placeholder="HH:MM" />
+            </label>
+          </div>
+
+          <div class="row" style="margin-top:10px;">
+            <label>
+              <div class="small">Issue Type</div>
+              <input id="editIssueType" />
+            </label>
+            <label>
+              <div class="small">Quick Class</div>
+              <input id="editQuick" />
+            </label>
+            <label>
+              <div class="small">Subtype</div>
+              <input id="editSubType" />
+            </label>
+            <label>
+              <div class="small">Confidence</div>
+              <input id="editConfidence" />
+            </label>
+          </div>
+
+          <div class="row" style="margin-top:10px;">
+            <label style="flex:2;">
+              <div class="small">Issue Description</div>
+              <input id="editIssueDesc" />
+            </label>
+            <label style="flex:1.3;">
+              <div class="small">Recovery</div>
+              <input id="editRecovery" />
+            </label>
+          </div>
+
+          <div class="operatorBox">
+            <div><b>Raw line:</b> <span id="editRawLine" class="mono muted"></span></div>
+            <div style="margin-top:6px;"><b>Rule label:</b> <span id="editRuleLabel" class="mono"></span></div>
+            <div style="margin-top:6px;"><b>Matched keywords:</b> <span id="editMatchedKeywords" class="mono"></span></div>
+            <div style="margin-top:6px;"><b>Operator-ready sentence:</b> <span id="editOperatorSentence" class="mono"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2) Output (TSV)</h2>
+    <div class="body">
+      <div class="row" style="margin-bottom:10px;">
+        <label>
+          <div class="small">Default minutes if unknown</div>
+          <input id="defaultMin" value="2" />
+        </label>
+      </div>
+
+      <textarea id="out" placeholder="TSV will appear here..."></textarea>
+
+      <div class="btns">
+        <button class="good" id="copy" type="button">Copy TSV</button>
+        <button id="download" type="button">Download .tsv</button>
+      </div>
+
+      <div class="small">Abnormal time format: <code>00:06</code>. End time = Start + minutes.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3) Advanced information</h2>
+    <div class="body">
+      <div class="row" style="margin-bottom:10px;">
+        <button id="refreshAdvanced" type="button" class="primary">Refresh</button>
+        <button id="copyAdvanced" type="button" class="good">Copy Advanced</button>
+        <button id="clearShiftStats" type="button">Clear shift stats</button>
+      </div>
+
+      <div class="small" style="opacity:.8; margin-bottom:10px;">
+        Based on <b>current shift</b> totals (06:00–18:00 / 18:00–06:00).
+      </div>
+
+      <div id="advBox"></div>
+    </div>
+  </section>
+</main>
+
+<noscript>
+  <div style="padding:12px;color:#ffd37a;">JavaScript is disabled — buttons cannot work.</div>
+</noscript>
+
+<div class="footerMark">
+  <a href="https://lknzmzd.xyz" target="_blank">© LKNZMZD</a>
+</div>
+
+<button id="templateBtn" class="templateBtn">Templates</button>
+
+<div id="templatePanel" class="templatePanel">
+  <div class="templateHeader">
+    <span>Error Templates</span>
+    <div style="display:flex; gap:6px;">
+      <button id="copyAllTemplates" type="button">Copy All</button>
+      <button id="closeTemplates" type="button">✕</button>
+    </div>
+  </div>
+  <div id="templateList" class="templateList"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="./app.js?v=3"></script>
+</body>
+</html>
