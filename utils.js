@@ -58,7 +58,7 @@ export const SUB = {
   IrregularOp: "操作不规范 Irregular operation",
   IrregularOperation: "操作不规范 Irregular operation",
   EmergencyStopDamaged: "急停按钮损坏 Emergency stop button is damaged",
-  SecurityModuleFail: "安全模块故障 Security module failure",
+  SecurityModuleFail: "安全模块故障Security module failure",
   ParameterConfigErr: "参数配置错误 Parameter configuration error",
   DriverComponentEx: "驱动组件异常 Driver component exception",
   ObstacleOnPath: "路径上有障碍物 Obstacle on the path",
