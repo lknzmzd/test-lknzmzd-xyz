@@ -85,17 +85,33 @@ function renderList(title, entries){
   `;
 }
 
-export function renderAdvanced(targetEl){
+function getCurrentShiftBucket(){
   const shift = getCurrentShiftInfo();
   const statsStore = loadShiftStats();
-  const b = statsStore[shift.key];
+  const bucket = statsStore[shift.key] || null;
+  return { shift, statsStore, bucket };
+}
+
+function getUpdatedText(updatedAt){
+  return new Date(updatedAt || Date.now())
+    .toLocaleString("sv-SE")
+    .replace("T", " ");
+}
+
+/* ----------------------------- */
+/* ADVANCED INFORMATION (OLD)    */
+/* stays exactly the same        */
+/* ----------------------------- */
+
+export function renderAdvanced(targetEl){
+  const { shift, bucket: b } = getCurrentShiftBucket();
 
   if(!b){
     targetEl.innerHTML = `<div class="small" style="opacity:.8;">No shift stats yet. Click <b>Generate TSV</b> at least once.</div>`;
     return;
   }
 
-  const updated = new Date(b.updatedAt || Date.now()).toLocaleString("sv-SE").replace("T", " ");
+  const updated = getUpdatedText(b.updatedAt);
 
   targetEl.innerHTML = `
     <div class="small" style="opacity:.85; margin-bottom:8px;">
@@ -116,9 +132,7 @@ export function renderAdvanced(targetEl){
 }
 
 export async function copyAdvancedText(){
-  const shift = getCurrentShiftInfo();
-  const statsStore = loadShiftStats();
-  const b = statsStore[shift.key];
+  const { bucket: b } = getCurrentShiftBucket();
   if(!b) return false;
 
   const fmtTop = (title, obj) => {
@@ -127,7 +141,7 @@ export async function copyAdvancedText(){
     return `${title}\n${lines.join("\n")}`;
   };
 
-  const updated = new Date(b.updatedAt).toLocaleString("sv-SE").replace("T", " ");
+  const updated = getUpdatedText(b.updatedAt);
 
   const text = [
     "Advanced information",
@@ -144,6 +158,84 @@ export async function copyAdvancedText(){
     fmtTop("Top 5 Rule IDs", b.byRuleId),
     fmtTop("Top 5 Rule Labels", b.byRuleLabel),
     fmtTop("Confidence distribution", b.byConfidence)
+  ].join("\n");
+
+  return copyText(text);
+}
+
+/* ----------------------------- */
+/* DAILY REPORT (NEW)            */
+/* same as Advanced Info,        */
+/* but Top Device No = 10        */
+/* ----------------------------- */
+
+function simplifyShiftLabel(label, fallbackLabel = ""){
+  const raw = String(label || fallbackLabel || "").trim();
+  if(!raw) return "(unknown)";
+
+  const match = raw.match(/(\d{2}:\d{2})[–-](\d{2}:\d{2})/);
+  if(match){
+    return `${match[1]}–${match[2]}`;
+  }
+
+  return raw;
+}
+
+export function renderDailyReport(targetEl){
+  const { shift, bucket: b } = getCurrentShiftBucket();
+
+  if(!b){
+    targetEl.innerHTML = `<div class="small" style="opacity:.8;">No shift stats yet. Click <b>Generate TSV</b> at least once.</div>`;
+    return;
+  }
+
+  const updated = getUpdatedText(b.updatedAt);
+  const shiftLabel = simplifyShiftLabel(b.label, shift.label);
+
+  targetEl.innerHTML = `
+    <div class="small" style="opacity:.85; margin-bottom:8px;">
+      <div><b>Shift:</b> ${esc(shiftLabel)}</div>
+      <div><b>Total errors:</b> ${b.totalRows || 0}</div>
+      <div><b>Last update:</b> ${esc(updated)}</div>
+    </div>
+    ${renderList("Top 5 Issue Description", topN(b.byIssueDesc || {}, 5))}
+    ${renderList("Top 10 Device No", topN(b.byDeviceNo || {}, 10))}
+    ${renderList("Top 5 Quick Classification", topN(b.byQuick || {}, 5))}
+    ${renderList("Top 5 Issue Type", topN(b.byIssueType || {}, 5))}
+    ${renderList("Top 5 Device Type", topN(b.byDeviceType || {}, 5))}
+    ${renderList("Top 5 Rule IDs", topN(b.byRuleId || {}, 5))}
+    ${renderList("Top 5 Rule Labels", topN(b.byRuleLabel || {}, 5))}
+    ${renderList("Confidence distribution", topN(b.byConfidence || {}, 5))}
+  `;
+}
+
+export async function copyDailyReportText(){
+  const { shift, bucket: b } = getCurrentShiftBucket();
+  if(!b) return false;
+
+  const fmtTop = (title, obj, limit = 5) => {
+    const items = topN(obj, limit);
+    const lines = items.length ? items.map(([k,v]) => `- ${k} → ${v}`) : ["- —"];
+    return `${title}\n${lines.join("\n")}`;
+  };
+
+  const updated = getUpdatedText(b.updatedAt);
+  const shiftLabel = simplifyShiftLabel(b.label, shift.label);
+
+  const text = [
+    "Daily report",
+    `Shift: ${shiftLabel}`,
+    `Total errors: ${b.totalRows || 0}`,
+    `Last update: ${updated}`,
+    "",
+    fmtTop("Top 5 Issue Description", b.byIssueDesc, 5),
+    fmtTop("Top 10 Device No", b.byDeviceNo, 10),
+    fmtTop("Top 5 Device Type", b.byDeviceType, 5),
+    fmtTop("Top 5 Quick Classification", b.byQuick, 5),
+    fmtTop("Top 5 Issue Type", b.byIssueType, 5),
+    fmtTop("Top 5 Rule IDs", b.byRuleId, 5),
+    fmtTop("Top 5 Rule Labels", b.byRuleLabel, 5),
+    fmtTop("Confidence distribution", b.byConfidence, 5)
   ].join("\n");
 
   return copyText(text);

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Report</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="daily-report-page">
+    <section class="daily-report-card">
+      <h1>Daily Report</h1>
+      <p id="reportDate"></p>
+
+      <div id="dailyReportContainer" class="daily-report-output"></div>
+
+      <div class="report-actions">
+        <button id="copyDailyReportBtn" type="button">Copy Daily Report</button>
+        <button id="saveReportBtn" type="button">Refresh Report</button>
+        <button id="resetReportBtn" type="button">Reset Report</button>
+      </div>
+
+      <p id="reportStatus">No updates yet.</p>
+    </section>
+
+    <div id="resetModal" class="hidden">
+      <div class="modal-box">
+        <h2>Reset Daily Report</h2>
+        <input
+          id="resetPasswordInput"
+          type="password"
+          placeholder="Enter password"
+        />
+        <div class="report-actions">
+          <button id="confirmResetBtn" type="button">Confirm Reset</button>
+          <button id="cancelResetBtn" type="button">Cancel</button>
+        </div>
+        <p id="resetMessage"></p>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="./daily-report.js"></script>
+</body>
+</html>

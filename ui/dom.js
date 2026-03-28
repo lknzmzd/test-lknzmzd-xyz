@@ -1,0 +1,40 @@
+import { $ } from "../utils.js";
+
+export function getDOMElements() {
+  return {
+    date: $("date"),
+    deviceType: $("deviceType"),
+    status: $("status"),
+    tempMeasures: $("tempMeasures"),
+    raw: $("raw"),
+    out: $("out"),
+    defaultMin: $("defaultMin"),
+    rowCount: $("rowCount"),
+    warnText: $("warnText"),
+    validationSummary: $("validationSummary"),
+    issuesPanel: $("issuesPanel"),
+    issuesCount: $("issuesCount"),
+    issuesSummary: $("issuesSummary"),
+    issuesList: $("issuesList"),
+    templateSuggestionHint: $("templateSuggestionHint"),
+    advBox: $("advBox"),
+    shiftLabel: $("shiftLabel"),
+    shiftTotal: $("shiftTotal"),
+    editPanel: $("editPanel"),
+    editMeta: $("editMeta"),
+    editDeviceType: $("editDeviceType"),
+    editDeviceNo: $("editDeviceNo"),
+    editMinutes: $("editMinutes"),
+    editStartTime: $("editStartTime"),
+    editIssueType: $("editIssueType"),
+    editQuick: $("editQuick"),
+    editSubType: $("editSubType"),
+    editConfidence: $("editConfidence"),
+    editIssueDesc: $("editIssueDesc"),
+    editRecovery: $("editRecovery"),
+    editRawLine: $("editRawLine"),
+    editRuleLabel: $("editRuleLabel"),
+    editMatchedKeywords: $("editMatchedKeywords"),
+    editOperatorSentence: $("editOperatorSentence")
+  };
+}
