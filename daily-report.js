@@ -12,7 +12,11 @@ const resetMessage = document.getElementById("resetMessage");
 const reportEl = document.getElementById("dailyReportContainer");
 const copyBtn = document.getElementById("copyDailyReportBtn");
 
-const API_BASE = window.location.hostname === "localhost"
+const IS_LOCAL =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+
+const API_BASE = IS_LOCAL
   ? "http://localhost:3002/api/daily-report"
   : "https://test.lknzmzd.xyz/api/daily-report";
 
@@ -59,7 +63,6 @@ function parseReportData(rawData) {
 
   for (let i = 0; i < 10; i++) {
     if (typeof data !== "string") break;
-
     try {
       data = JSON.parse(data);
     } catch {
@@ -167,7 +170,9 @@ async function loadDailyReport() {
     reportStatus.textContent = `Daily report loaded. Total errors: ${data.totalErrors || 0}`;
   } catch (err) {
     console.error("Daily report load error:", err);
-    reportStatus.textContent = "Server error while loading daily report.";
+    reportStatus.textContent = IS_LOCAL
+      ? "Local server error. Make sure backend is running on localhost:3002."
+      : "Online API is not available yet. Backend is not deployed.";
     reportEl.innerHTML = "";
   }
 }
@@ -219,7 +224,9 @@ confirmResetBtn?.addEventListener("click", async () => {
     }, 700);
   } catch (err) {
     console.error("Daily report reset error:", err);
-    resetMessage.textContent = "Server error. Could not reset.";
+    resetMessage.textContent = IS_LOCAL
+      ? "Local server error. Could not reset."
+      : "Online API is not available yet.";
   }
 });
 
