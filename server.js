@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const app = express();
-const PORT = 3002;
+const PORT = process.env.PORT || 3002;
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));

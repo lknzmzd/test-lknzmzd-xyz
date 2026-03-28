@@ -16,9 +16,11 @@ const IS_LOCAL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 
-const API_BASE = IS_LOCAL
-  ? "http://localhost:3002/api/daily-report"
-  : "https://test.lknzmzd.xyz/api/daily-report";
+const API_BASE =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://localhost:3002/api/daily-report"
+    : "https://lknzmzd-daily-report.onrender.com/api/daily-report";
 
 function topN(obj, n = 5) {
   return Object.entries(obj || {})
