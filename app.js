@@ -59,25 +59,42 @@ const correctionEngine = createCorrectionEngine({
 
 const historyModule = createHistoryModule();
 
-const DAILY_REPORT_API =
+const IS_LOCAL =
   window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://localhost:3002/api/daily-report/update"
-    : "https://lknzmzd-daily-report.onrender.com/api/daily-report/update";
+  window.location.hostname === "127.0.0.1";
+
+const DAILY_REPORT_API = IS_LOCAL
+  ? "http://localhost:3002/api/daily-report/update"
+  : "https://lknzmzd-daily-report.onrender.com/api/daily-report/update";
 
 async function pushDailyReportUpdate(previewRows) {
+  console.log("POSTING TO DAILY REPORT API:", DAILY_REPORT_API);
+  console.log("Preview rows being sent:", previewRows);
+
   const response = await fetch(DAILY_REPORT_API, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ previewRows })
   });
 
-  const result = await response.json();
+  const rawText = await response.text();
+  let result = null;
+
+  try {
+    result = rawText ? JSON.parse(rawText) : {};
+  } catch (err) {
+    console.error("Daily report API returned non-JSON:", rawText);
+    throw new Error("Daily report API returned invalid JSON.");
+  }
+
+  console.log("Daily report API response status:", response.status);
+  console.log("Daily report API response body:", result);
 
   if (!response.ok || !result.ok) {
-    throw new Error(result.message || "Could not update shared daily report.");
+    throw new Error(result.message || `Could not update shared daily report. HTTP ${response.status}`);
   }
 
   return result;
@@ -174,6 +191,7 @@ async function generate() {
 
   const criticalRows = getCriticalRows(state.previewRows);
   if (criticalRows.length) {
+    console.warn("CRITICAL ROWS BLOCKED:", criticalRows);
     toast(`Blocked: ${criticalRows.length} row(s) have critical errors`);
     return;
   }
@@ -205,6 +223,7 @@ async function generate() {
   }
 
   try {
+    console.log("ABOUT TO SYNC DAILY REPORT");
     await pushDailyReportUpdate(state.previewRows);
     console.log("Daily report synced to server ✅");
   } catch (err) {
@@ -334,12 +353,14 @@ document.addEventListener("DOMContentLoaded", () => {
     els.date.value = `${yyyy}/${mm}/${dd}`;
   }
 
+  console.log("Robot Incident Processing System loaded ✅");
+  console.log("Environment:", IS_LOCAL ? "LOCAL" : "PRODUCTION");
+  console.log("Daily report update API:", DAILY_REPORT_API);
+
   bindEvents();
   updateShiftLabel();
   updateUIStates();
   initTemplatesUI();
   renderAdvanced(els.advBox);
-
   rerenderPreview();
-  console.log("Robot Incident Processing System loaded ✅");
 });
