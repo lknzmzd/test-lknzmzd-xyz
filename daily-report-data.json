@@ -1,3 +1,63 @@
 {
-  "lastResetAt": "2026-03-28T02:22:52.697Z"
+  "reportDate": "2026-03-28",
+  "totalErrors": 16,
+  "byIssueDesc": {
+    "Unable to drive. Missing DM code.": 5,
+    "Charging failure. Parameter configuration error.": 5,
+    "Robots collided while Kiva tried to take a case.": 3,
+    "Charging failure. DM code position deviation.": 2,
+    "Unable to drive. Ground seam effect.": 1
+  },
+  "byDeviceNo": {
+    "209": 3,
+    "988": 3,
+    "1145": 1,
+    "1840": 3,
+    "1841": 1,
+    "1842": 1,
+    "2140": 1,
+    "2145": 5,
+    "2146": 1,
+    "CS11": 3,
+    "H123": 4,
+    "CS123": 1
+  },
+  "byQuick": {
+    "行走异常Unable to drive": 6,
+    "充电异常Abnormal charging": 7,
+    "机器人相互碰撞 Two robots collide": 3
+  },
+  "byIssueType": {
+    "设备Equipment": 15,
+    "环境Environment": 1
+  },
+  "byDeviceType": {
+    "K50H": 5,
+    "Charging station": 4,
+    "A42T-E2 hook": 3,
+    "Work Station": 4
+  },
+  "byRuleId": {
+    "missing_dm_unable_drive": 5,
+    "charging_failure_parameter_config": 4,
+    "collision_kiva_take_case": 3,
+    "manual_charging_dynamic": 1,
+    "manual_charging_dm_pos_dev": 2,
+    "manual_unable_drive_ground_seam": 1
+  },
+  "byRuleLabel": {
+    "Unable to drive → Missing DM code": 5,
+    "Charging failure → Parameter configuration error": 4,
+    "Collision of 2 robots while Kiva tried to take a case": 3,
+    "Manual template: Charging → Parameter config → Dynamic": 1,
+    "Manual template: Charging → DM code position deviation": 2,
+    "Manual template: Unable to drive → Ground seam effect": 1
+  },
+  "byConfidence": {
+    "high": 8,
+    "medium": 4,
+    "manual-template": 4
+  },
+  "updatedAt": "2026-03-28T19:41:52.961Z",
+  "resetAt": null
 }

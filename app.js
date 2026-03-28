@@ -59,6 +59,29 @@ const correctionEngine = createCorrectionEngine({
 
 const historyModule = createHistoryModule();
 
+const DAILY_REPORT_API =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:3002/api/daily-report/update"
+    : "https://test.lknzmzd.xyz/api/daily-report/update";
+
+async function pushDailyReportUpdate(previewRows) {
+  const response = await fetch(DAILY_REPORT_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ previewRows })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || !result.ok) {
+    throw new Error(result.message || "Could not update shared daily report.");
+  }
+
+  return result;
+}
+
 function updateShiftLabel() {
   const info = getShiftTotal();
   els.shiftLabel.textContent = info.shift.label;
@@ -125,7 +148,7 @@ function previewOnly() {
   toast("Preview ready ✅");
 }
 
-function generate() {
+async function generate() {
   const rawText = (els.raw.value || "").trim();
   if (!rawText) {
     toast("Raw input is empty");
@@ -178,6 +201,14 @@ function generate() {
         source: "manual-ui"
       })
     });
+  }
+
+  try {
+    await pushDailyReportUpdate(state.previewRows);
+    console.log("Daily report synced to server ✅");
+  } catch (err) {
+    console.error("Failed to sync daily report:", err);
+    toast("Generated ✅ but shared Daily Report sync failed");
   }
 
   updateShiftLabel();
