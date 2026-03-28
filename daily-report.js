@@ -16,11 +16,9 @@ const IS_LOCAL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 
-const API_BASE =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://localhost:3002/api/daily-report"
-    : "https://lknzmzd-daily-report.onrender.com/api/daily-report";
+const API_BASE = IS_LOCAL
+  ? "http://localhost:3002/api/daily-report"
+  : "https://lknzmzd-daily-report.onrender.com/api/daily-report";
 
 function topN(obj, n = 5) {
   return Object.entries(obj || {})
@@ -88,6 +86,7 @@ function parseReportData(rawData) {
     byRuleId: data.byRuleId && typeof data.byRuleId === "object" ? data.byRuleId : {},
     byRuleLabel: data.byRuleLabel && typeof data.byRuleLabel === "object" ? data.byRuleLabel : {},
     byConfidence: data.byConfidence && typeof data.byConfidence === "object" ? data.byConfidence : {},
+    firstAddedAt: data.firstAddedAt || null,
     updatedAt: data.updatedAt || null,
     resetAt: data.resetAt || null
   };
@@ -101,13 +100,13 @@ function buildCopyText(data) {
   };
 
   const firstAdded = data.firstAddedAt
-  ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
-  : "—";
+    ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
+    : "—";
 
   const updated = data.updatedAt
     ? new Date(data.updatedAt).toLocaleString("sv-SE").replace("T", " ")
     : "—";
-  
+
   return [
     "Daily report",
     `Date: ${data.reportDate || "—"}`,
@@ -127,6 +126,10 @@ function buildCopyText(data) {
 }
 
 function renderDailyReport(data) {
+  const firstAdded = data.firstAddedAt
+    ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
+    : "—";
+
   const updated = data.updatedAt
     ? new Date(data.updatedAt).toLocaleString("sv-SE").replace("T", " ")
     : "—";
@@ -178,9 +181,7 @@ async function loadDailyReport() {
     reportStatus.textContent = `Daily report loaded. Total errors: ${data.totalErrors || 0}`;
   } catch (err) {
     console.error("Daily report load error:", err);
-    reportStatus.textContent = IS_LOCAL
-      ? "Local server error. Make sure backend is running on localhost:3002."
-      : "Online API is not available yet. Backend is not deployed.";
+    reportStatus.textContent = "Server error while loading daily report.";
     reportEl.innerHTML = "";
   }
 }
@@ -232,9 +233,7 @@ confirmResetBtn?.addEventListener("click", async () => {
     }, 700);
   } catch (err) {
     console.error("Daily report reset error:", err);
-    resetMessage.textContent = IS_LOCAL
-      ? "Local server error. Could not reset."
-      : "Online API is not available yet.";
+    resetMessage.textContent = "Server error. Could not reset.";
   }
 });
 
