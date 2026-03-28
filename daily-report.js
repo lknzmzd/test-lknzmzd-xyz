@@ -12,7 +12,9 @@ const resetMessage = document.getElementById("resetMessage");
 const reportEl = document.getElementById("dailyReportContainer");
 const copyBtn = document.getElementById("copyDailyReportBtn");
 
-const API_BASE = "http://localhost:3002/api/daily-report";
+const API_BASE = window.location.hostname === "localhost"
+  ? "http://localhost:3002/api/daily-report"
+  : "https://test.lknzmzd.xyz/api/daily-report";
 
 function topN(obj, n = 5) {
   return Object.entries(obj || {})
