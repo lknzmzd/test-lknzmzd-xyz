@@ -60,9 +60,10 @@ const correctionEngine = createCorrectionEngine({
 const historyModule = createHistoryModule();
 
 const DAILY_REPORT_API =
-  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
     ? "http://localhost:3002/api/daily-report/update"
-    : "https://test.lknzmzd.xyz/api/daily-report/update";
+    : "https://lknzmzd-daily-report.onrender.com/api/daily-report/update";
 
 async function pushDailyReportUpdate(previewRows) {
   const response = await fetch(DAILY_REPORT_API, {
