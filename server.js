@@ -41,6 +41,7 @@ function createEmptyStore() {
     byRuleId: {},
     byRuleLabel: {},
     byConfidence: {},
+    firstAddedAt: null,
     updatedAt: null,
     resetAt: null
   };
@@ -154,8 +155,15 @@ app.post("/api/daily-report/update", (req, res) => {
     store.totalErrors += 1;
   }
 
-  store.reportDate = new Date().toISOString().slice(0, 10);
-  store.updatedAt = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+
+  store.reportDate = nowIso.slice(0, 10);
+
+  if (!store.firstAddedAt) {
+    store.firstAddedAt = nowIso;
+  }
+
+  store.updatedAt = nowIso;
 
   writeStore(store);
 

@@ -100,14 +100,19 @@ function buildCopyText(data) {
     return `${title}\n${lines.join("\n")}`;
   };
 
+  const firstAdded = data.firstAddedAt
+  ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
+  : "—";
+
   const updated = data.updatedAt
     ? new Date(data.updatedAt).toLocaleString("sv-SE").replace("T", " ")
     : "—";
-
+  
   return [
     "Daily report",
     `Date: ${data.reportDate || "—"}`,
     `Total errors: ${data.totalErrors || 0}`,
+    `First data added: ${firstAdded}`,
     `Last update: ${updated}`,
     "",
     fmtTop("Top 5 Issue Description", data.byIssueDesc, 5),
@@ -132,6 +137,7 @@ function renderDailyReport(data) {
     <div class="small" style="opacity:.85; margin-bottom:8px;">
       <div><b>Date:</b> ${escapeHtml(data.reportDate || "—")}</div>
       <div><b>Total errors:</b> ${data.totalErrors || 0}</div>
+      <div><b>First data added:</b> ${escapeHtml(firstAdded)}</div>
       <div><b>Last update:</b> ${escapeHtml(updated)}</div>
     </div>
     ${renderList("Top 5 Issue Description", topN(data.byIssueDesc || {}, 5))}
