@@ -3,7 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
+import { USERS } from "./users.js";
 
 dotenv.config();
 
@@ -18,18 +20,17 @@ console.log("DAILY REPORT SERVER ACTIVE ✅");
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dataDir =
-  process.env.DATA_DIR ||
-  path.join(process.env.LOCALAPPDATA || __dirname, "lknzmzd");
+const dataDir = process.env.RENDER
+  ? "/data"
+  : path.join(process.env.LOCALAPPDATA || __dirname, "lknzmzd");
 
 fs.mkdirSync(dataDir, { recursive: true });
 
 const DATA_FILE = path.join(dataDir, "daily-report-data.json");
 
+const sessions = new Map();
 
-const RESET_PASSWORD = process.env.RESET_PASSWORD || "";
-
-function createEmptyStore() {
+function createEmptyStore(previous = {}) {
   return {
     reportDate: new Date().toISOString().slice(0, 10),
     totalErrors: 0,
@@ -43,216 +44,304 @@ function createEmptyStore() {
     byConfidence: {},
     firstAddedAt: null,
     updatedAt: null,
-    resetAt: null
+
+    lastAddedBy: previous.lastAddedBy || null,
+    lastAddedName: previous.lastAddedName || null,
+    lastAddedAt: previous.lastAddedAt || null,
+    addHistory: Array.isArray(previous.addHistory) ? previous.addHistory : [],
+
+    resetAt: previous.resetAt || null,
+    lastResetBy: previous.lastResetBy || null,
+    lastResetName: previous.lastResetName || null,
+    lastResetIp: previous.lastResetIp || null,
+    resetHistory: Array.isArray(previous.resetHistory) ? previous.resetHistory : []
   };
 }
 
-function parseMaybeStringifiedJson(value) {
-  let current = value;
-
-  for (let i = 0; i < 10; i++) {
-    if (typeof current !== "string") break;
-
-    try {
-      current = JSON.parse(current);
-    } catch {
-      return createEmptyStore();
+function readStore() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      const initial = createEmptyStore();
+      writeStore(initial);
+      return initial;
     }
+
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+
+    return {
+      ...createEmptyStore(parsed),
+      ...parsed,
+      addHistory: Array.isArray(parsed.addHistory) ? parsed.addHistory : [],
+      resetHistory: Array.isArray(parsed.resetHistory) ? parsed.resetHistory : []
+    };
+  } catch (err) {
+    console.error("READ STORE ERROR:", err);
+    const fallback = createEmptyStore();
+    writeStore(fallback);
+    return fallback;
   }
-
-  if (!current || typeof current !== "object" || Array.isArray(current)) {
-    return createEmptyStore();
-  }
-
-  const empty = createEmptyStore();
-
-  return {
-    reportDate: typeof current.reportDate === "string" ? current.reportDate : empty.reportDate,
-    totalErrors: Number.isFinite(Number(current.totalErrors)) ? Number(current.totalErrors) : 0,
-    byIssueDesc: current.byIssueDesc && typeof current.byIssueDesc === "object" && !Array.isArray(current.byIssueDesc) ? current.byIssueDesc : {},
-    byDeviceNo: current.byDeviceNo && typeof current.byDeviceNo === "object" && !Array.isArray(current.byDeviceNo) ? current.byDeviceNo : {},
-    byQuick: current.byQuick && typeof current.byQuick === "object" && !Array.isArray(current.byQuick) ? current.byQuick : {},
-    byIssueType: current.byIssueType && typeof current.byIssueType === "object" && !Array.isArray(current.byIssueType) ? current.byIssueType : {},
-    byDeviceType: current.byDeviceType && typeof current.byDeviceType === "object" && !Array.isArray(current.byDeviceType) ? current.byDeviceType : {},
-    byRuleId: current.byRuleId && typeof current.byRuleId === "object" && !Array.isArray(current.byRuleId) ? current.byRuleId : {},
-    byRuleLabel: current.byRuleLabel && typeof current.byRuleLabel === "object" && !Array.isArray(current.byRuleLabel) ? current.byRuleLabel : {},
-    byConfidence: current.byConfidence && typeof current.byConfidence === "object" && !Array.isArray(current.byConfidence) ? current.byConfidence : {},
-    firstAddedAt: current.firstAddedAt ?? null,
-    updatedAt: current.updatedAt ?? null,
-    resetAt: current.resetAt ?? null
-  };
 }
 
 function writeStore(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
-function loadStoreFromDisk() {
-  if (!fs.existsSync(DATA_FILE)) {
-    const empty = createEmptyStore();
-    writeStore(empty);
-    return empty;
-  }
+function incrementMap(mapObj, key, amount = 1) {
+  if (!key) return;
+  mapObj[key] = (mapObj[key] || 0) + amount;
+}
 
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return req.ip || req.socket?.remoteAddress || null;
+}
+
+function authenticate(username, password) {
+  return USERS.find(
+    (u) => u.username === username && u.password === password
+  ) || null;
+}
+
+function makeSessionToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+function getAuthToken(req) {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    return header.slice(7).trim();
+  }
+  return null;
+}
+
+function getSessionUser(req) {
+  const token = getAuthToken(req);
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session) return null;
+  return session.user;
+}
+
+app.get("/", (_req, res) => {
+  res.send("Daily Report API active ✅");
+});
+
+app.post("/api/auth/login", (req, res) => {
   try {
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
-    const parsed = parseMaybeStringifiedJson(raw);
-    writeStore(parsed);
-    return parsed;
-  } catch {
-    const empty = createEmptyStore();
-    writeStore(empty);
-    return empty;
-  }
-}
+    const { username, password } = req.body || {};
+    const user = authenticate(username, password);
 
-function incMap(map, key, by = 1) {
-  const k = String(key || "").trim();
-  if (!k) return;
-  map[k] = (map[k] || 0) + by;
-}
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Invalid username or password"
+      });
+    }
 
-function extractRobotNosForStats(raw) {
-  return String(raw || "")
-    .split(/[,+/&]| and | AND /g)
-    .map(x => x.trim())
-    .filter(Boolean);
-}
+    const token = makeSessionToken();
 
-/* Simple in-process lock to avoid overlapping writes */
-let writeQueue = Promise.resolve();
+    sessions.set(token, {
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role
+      },
+      createdAt: new Date().toISOString()
+    });
 
-function withWriteLock(fn) {
-  writeQueue = writeQueue.then(fn, fn);
-  return writeQueue;
-}
-
-app.get("/", (req, res) => {
-  res.send("ROOT OK");
-});
-
-app.get("/api/daily-report", (req, res) => {
-  console.log("GET /api/daily-report HIT ✅");
-
-  const store = loadStoreFromDisk();
-
-  res.setHeader("Cache-Control", "no-store");
-  res.json({
-    ok: true,
-    data: store
-  });
-});
-
-app.post("/api/daily-report/update", async (req, res) => {
-  console.log("POST /api/daily-report/update HIT ✅");
-
-  const { previewRows } = req.body || {};
-
-  if (!Array.isArray(previewRows)) {
-    console.log("❌ previewRows invalid");
-    return res.status(400).json({
+    res.json({
+      ok: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({
       ok: false,
-      message: "previewRows must be an array."
+      error: "Login failed"
     });
   }
+});
 
-  console.log("Preview rows count:", previewRows.length);
-
+app.post("/api/auth/logout", (req, res) => {
   try {
-    const updatedStore = await withWriteLock(async () => {
-      const store = loadStoreFromDisk();
+    const token = getAuthToken(req);
+    if (token) sessions.delete(token);
 
-      for (const row of previewRows) {
-        incMap(store.byIssueDesc, row.issueDesc || "(blank)");
-        incMap(store.byQuick, row.quick || "(blank)");
-        incMap(store.byIssueType, row.issueType || "(blank)");
-        incMap(store.byDeviceType, row.deviceType || "(blank)");
-        incMap(store.byRuleId, row.ruleId || "(blank)");
-        incMap(store.byRuleLabel, row.ruleLabel || "(blank)");
-        incMap(store.byConfidence, row.confidence || "(blank)");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("LOGOUT ERROR:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Logout failed"
+    });
+  }
+});
 
-        const robots = extractRobotNosForStats(row.deviceNo);
-        for (const robot of robots) {
-          incMap(store.byDeviceNo, robot);
+app.get("/api/auth/me", (req, res) => {
+  try {
+    const user = getSessionUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Not authenticated"
+      });
+    }
+
+    res.json({
+      ok: true,
+      user
+    });
+  } catch (err) {
+    console.error("ME ERROR:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to fetch current user"
+    });
+  }
+});
+
+app.get("/api/daily-report", (_req, res) => {
+  const store = readStore();
+  res.json({ ok: true, data: store });
+});
+
+app.post("/api/daily-report/update", (req, res) => {
+  try {
+    const user = getSessionUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Authentication required"
+      });
+    }
+
+    const { previewRows } = req.body || {};
+
+    if (!Array.isArray(previewRows) || previewRows.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "previewRows must be a non-empty array"
+      });
+    }
+
+    const store = readStore();
+    const now = new Date().toISOString();
+    const ip = getClientIp(req);
+
+    if (!store.firstAddedAt) {
+      store.firstAddedAt = now;
+    }
+
+    store.updatedAt = now;
+    store.lastAddedBy = user.username;
+    store.lastAddedName = user.name;
+    store.lastAddedAt = now;
+
+    for (const row of previewRows) {
+      store.totalErrors += 1;
+
+      incrementMap(store.byIssueDesc, row.issueDesc || "Unknown");
+      incrementMap(store.byDeviceNo, row.deviceNo || "Unknown");
+      incrementMap(store.byQuick, row.quick || "Unknown");
+      incrementMap(store.byIssueType, row.issueType || "Unknown");
+      incrementMap(store.byDeviceType, row.deviceType || "Unknown");
+      incrementMap(store.byRuleId, row.ruleId || "Unknown");
+      incrementMap(store.byRuleLabel, row.ruleLabel || "Unknown");
+      incrementMap(store.byConfidence, row.confidence || "Unknown");
+    }
+
+    store.addHistory.push({
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      at: now,
+      ip,
+      addedRows: previewRows.length
+    });
+
+    writeStore(store);
+
+    res.json({
+      ok: true,
+      message: "Daily report updated",
+      data: store
+    });
+  } catch (err) {
+    console.error("UPDATE ERROR:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to update daily report"
+    });
+  }
+});
+
+app.post("/api/daily-report/reset", (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    const user = authenticate(username, password);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Invalid username or password"
+      });
+    }
+
+    if (user.role !== "leader") {
+      return res.status(403).json({
+        ok: false,
+        error: "Only leader accounts can reset the daily report"
+      });
+    }
+
+    const oldStore = readStore();
+    const now = new Date().toISOString();
+    const ip = getClientIp(req);
+
+    const resetStore = createEmptyStore({
+      resetAt: now,
+      lastResetBy: user.username,
+      lastResetName: user.name,
+      lastResetIp: ip,
+      resetHistory: [
+        ...oldStore.resetHistory,
+        {
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          at: now,
+          ip
         }
-
-        store.totalErrors += 1;
-      }
-
-      const nowIso = new Date().toISOString();
-
-      store.reportDate = nowIso.slice(0, 10);
-
-      if (!store.firstAddedAt) {
-        store.firstAddedAt = nowIso;
-      }
-
-      store.updatedAt = nowIso;
-
-      writeStore(store);
-
-      console.log("✅ Store updated. Total errors:", store.totalErrors);
-      return store;
+      ]
     });
 
-    return res.json({
+    writeStore(resetStore);
+
+    res.json({
       ok: true,
-      message: "Updated",
-      data: updatedStore
+      message: "Daily report reset successfully",
+      data: resetStore
     });
   } catch (err) {
-    console.error("❌ Update failed:", err);
-    return res.status(500).json({
+    console.error("RESET ERROR:", err);
+    res.status(500).json({
       ok: false,
-      message: "Failed to update daily report."
-    });
-  }
-});
-
-app.post("/api/daily-report/reset", async (req, res) => {
-  console.log("POST /api/daily-report/reset HIT ✅");
-
-  const { password } = req.body || {};
-
-  if (!password) {
-    return res.status(400).json({
-      ok: false,
-      message: "Password is required."
-    });
-  }
-
-  if (password !== RESET_PASSWORD) {
-    console.log("❌ Wrong password");
-    return res.status(401).json({
-      ok: false,
-      message: "Wrong password"
-    });
-  }
-
-  try {
-    const freshStore = await withWriteLock(async () => {
-      const fresh = createEmptyStore();
-      fresh.resetAt = new Date().toISOString();
-      writeStore(fresh);
-      console.log("✅ Store reset");
-      return fresh;
-    });
-
-    return res.json({
-      ok: true,
-      message: "Reset successful",
-      data: freshStore
-    });
-  } catch (err) {
-    console.error("❌ Reset failed:", err);
-    return res.status(500).json({
-      ok: false,
-      message: "Failed to reset daily report."
+      error: "Failed to reset daily report"
     });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Data stored at: ${DATA_FILE}`);
+  console.log(`Server running on port ${PORT} 🚀`);
 });

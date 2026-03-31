@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Issue Log Fixer → TSV for Feishu</title>
-  <link rel="stylesheet" href="./styles.css?v=8" />
+  <link rel="stylesheet" href="./styles.css?v=10" />
 </head>
 <body>
 
@@ -15,12 +15,17 @@
     Keeps Device Type → Quality(empty) → Device No.
   </p>
 
-  <div class="smallRow" style="margin-bottom:8px; justify-content:flex-start;">
+  <div class="smallRow" style="margin-bottom:8px; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <span class="badge">
       <span id="rawDot" class="dot"></span>
       Raw input
       <span id="rowCount" class="counter" style="margin-left:10px;">Raw: 0 · Preview: 0 · Output: 0</span>
     </span>
+
+    <div id="sessionBar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <span id="sessionStatus" class="badge">Not logged in</span>
+      <button id="logoutBtn" type="button" style="display:none;">Logout</button>
+    </div>
   </div>
 
   <div class="smallRow" style="margin-bottom:8px;">
@@ -86,9 +91,8 @@
         <button id="loadExample" type="button">Load example</button>
       </div>
 
-      <div class="small warn">
-        If you put this HTML into Feishu/Wiki/Docs, scripts are blocked and buttons won’t work.
-        Open it as a local file: <code>file:///...</code> or host it as a normal HTML page.
+      <div class="small warn" style="margin-top:12px;">
+        Login is required once per browser session before generating.
       </div>
 
       <div id="validationSummary" class="issueBox" style="display:none;"></div>
@@ -246,6 +250,19 @@
 
 <div id="toast" class="toast"></div>
 
-<script type="module" src="./app.js?v=8"></script>
+<div id="loginModal" class="hidden">
+  <div class="modal-box">
+    <h2>Login Required</h2>
+    <input id="loginUsernameInput" type="text" placeholder="Username" autocomplete="username" />
+    <input id="loginPasswordInput" type="password" placeholder="Password" autocomplete="current-password" />
+    <div class="report-actions">
+      <button id="confirmLoginBtn" type="button">Login</button>
+      <button id="cancelLoginBtn" type="button">Cancel</button>
+    </div>
+    <p id="loginMessage"></p>
+  </div>
+</div>
+
+<script type="module" src="./app.js?v=10"></script>
 </body>
 </html>

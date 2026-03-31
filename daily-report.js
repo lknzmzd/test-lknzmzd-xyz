@@ -4,6 +4,7 @@ const resetReportBtn = document.getElementById("resetReportBtn");
 const reportStatus = document.getElementById("reportStatus");
 
 const resetModal = document.getElementById("resetModal");
+const resetUsernameInput = document.getElementById("resetUsernameInput");
 const resetPasswordInput = document.getElementById("resetPasswordInput");
 const confirmResetBtn = document.getElementById("confirmResetBtn");
 const cancelResetBtn = document.getElementById("cancelResetBtn");
@@ -11,6 +12,14 @@ const resetMessage = document.getElementById("resetMessage");
 
 const reportEl = document.getElementById("dailyReportContainer");
 const copyBtn = document.getElementById("copyDailyReportBtn");
+
+const lastAddedByEl = document.getElementById("lastAddedBy");
+const lastAddedAtEl = document.getElementById("lastAddedAt");
+const lastResetByEl = document.getElementById("lastResetBy");
+const lastResetAtEl = document.getElementById("lastResetAt");
+const lastResetIpEl = document.getElementById("lastResetIp");
+const addHistoryListEl = document.getElementById("addHistoryList");
+const resetHistoryListEl = document.getElementById("resetHistoryList");
 
 const IS_LOCAL =
   window.location.hostname === "localhost" ||
@@ -27,12 +36,19 @@ function topN(obj, n = 5) {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("sv-SE").replace("T", " ");
 }
 
 function renderList(title, entries) {
@@ -46,14 +62,52 @@ function renderList(title, entries) {
   `;
 }
 
+function renderHistoryList(container, items, mode) {
+  if (!container) return;
+
+  if (!Array.isArray(items) || !items.length) {
+    container.innerHTML = mode === "add" ? "No add history yet." : "No reset history yet.";
+    return;
+  }
+
+  container.innerHTML = `
+    <ul class="advList">
+      ${items.slice().reverse().map(item => {
+        if (mode === "add") {
+          return `
+            <li>
+              <b>${escapeHtml(item.name || item.username || "—")}</b>
+              (${escapeHtml(item.username || "—")})
+              → added <b>${escapeHtml(item.addedRows ?? 0)}</b> rows
+              → ${escapeHtml(formatDateTime(item.at))}
+              ${item.ip ? `<span style="opacity:.75;">(IP: ${escapeHtml(item.ip)})</span>` : ""}
+            </li>
+          `;
+        }
+
+        return `
+          <li>
+            <b>${escapeHtml(item.name || item.username || "—")}</b>
+            (${escapeHtml(item.username || "—")})
+            → reset at <b>${escapeHtml(formatDateTime(item.at))}</b>
+            ${item.ip ? `<span style="opacity:.75;">(IP: ${escapeHtml(item.ip)})</span>` : ""}
+          </li>
+        `;
+      }).join("")}
+    </ul>
+  `;
+}
+
 function closeResetModal() {
   resetModal?.classList.add("hidden");
+  if (resetUsernameInput) resetUsernameInput.value = "";
   if (resetPasswordInput) resetPasswordInput.value = "";
   if (resetMessage) resetMessage.textContent = "";
 }
 
 function openResetModal() {
   resetModal?.classList.remove("hidden");
+  if (resetUsernameInput) resetUsernameInput.value = "";
   if (resetPasswordInput) resetPasswordInput.value = "";
   if (resetMessage) resetMessage.textContent = "";
 }
@@ -88,7 +142,17 @@ function parseReportData(rawData) {
     byConfidence: data.byConfidence && typeof data.byConfidence === "object" ? data.byConfidence : {},
     firstAddedAt: data.firstAddedAt || null,
     updatedAt: data.updatedAt || null,
-    resetAt: data.resetAt || null
+
+    lastAddedBy: data.lastAddedBy || null,
+    lastAddedName: data.lastAddedName || null,
+    lastAddedAt: data.lastAddedAt || null,
+    addHistory: Array.isArray(data.addHistory) ? data.addHistory : [],
+
+    resetAt: data.resetAt || null,
+    lastResetBy: data.lastResetBy || null,
+    lastResetName: data.lastResetName || null,
+    lastResetIp: data.lastResetIp || null,
+    resetHistory: Array.isArray(data.resetHistory) ? data.resetHistory : []
   };
 }
 
@@ -99,13 +163,14 @@ function buildCopyText(data) {
     return `${title}\n${lines.join("\n")}`;
   };
 
-  const firstAdded = data.firstAddedAt
-    ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
-    : "—";
-
-  const updated = data.updatedAt
-    ? new Date(data.updatedAt).toLocaleString("sv-SE").replace("T", " ")
-    : "—";
+  const firstAdded = formatDateTime(data.firstAddedAt);
+  const updated = formatDateTime(data.updatedAt);
+  const lastAddedBy = data.lastAddedName
+    ? `${data.lastAddedName} (${data.lastAddedBy || "—"})`
+    : (data.lastAddedBy || "—");
+  const lastResetBy = data.lastResetName
+    ? `${data.lastResetName} (${data.lastResetBy || "—"})`
+    : (data.lastResetBy || "—");
 
   return [
     "Daily report",
@@ -113,6 +178,11 @@ function buildCopyText(data) {
     `Total errors: ${data.totalErrors || 0}`,
     `First data added: ${firstAdded}`,
     `Last update: ${updated}`,
+    `Last added by: ${lastAddedBy}`,
+    `Last added at: ${formatDateTime(data.lastAddedAt)}`,
+    `Last reset by: ${lastResetBy}`,
+    `Last reset at: ${formatDateTime(data.resetAt)}`,
+    `Last reset IP: ${data.lastResetIp || "—"}`,
     "",
     fmtTop("Top 5 Issue Description", data.byIssueDesc, 5),
     fmtTop("Top 10 Device No", data.byDeviceNo, 10),
@@ -126,13 +196,8 @@ function buildCopyText(data) {
 }
 
 function renderDailyReport(data) {
-  const firstAdded = data.firstAddedAt
-    ? new Date(data.firstAddedAt).toLocaleString("sv-SE").replace("T", " ")
-    : "—";
-
-  const updated = data.updatedAt
-    ? new Date(data.updatedAt).toLocaleString("sv-SE").replace("T", " ")
-    : "—";
+  const firstAdded = formatDateTime(data.firstAddedAt);
+  const updated = formatDateTime(data.updatedAt);
 
   reportDate.textContent = data.reportDate || new Date().toISOString().slice(0, 10);
 
@@ -153,9 +218,34 @@ function renderDailyReport(data) {
     ${renderList("Confidence distribution", topN(data.byConfidence || {}, 5))}
   `;
 
+  if (lastAddedByEl) {
+    lastAddedByEl.textContent = data.lastAddedName
+      ? `${data.lastAddedName} (${data.lastAddedBy || "—"})`
+      : (data.lastAddedBy || "—");
+  }
+
+  if (lastAddedAtEl) lastAddedAtEl.textContent = formatDateTime(data.lastAddedAt);
+
+  if (lastResetByEl) {
+    lastResetByEl.textContent = data.lastResetName
+      ? `${data.lastResetName} (${data.lastResetBy || "—"})`
+      : (data.lastResetBy || "—");
+  }
+
+  if (lastResetAtEl) lastResetAtEl.textContent = formatDateTime(data.resetAt);
+  if (lastResetIpEl) lastResetIpEl.textContent = data.lastResetIp || "—";
+
+  renderHistoryList(addHistoryListEl, data.addHistory || [], "add");
+  renderHistoryList(resetHistoryListEl, data.resetHistory || [], "reset");
+
   copyBtn.onclick = async () => {
-    await navigator.clipboard.writeText(buildCopyText(data));
-    reportStatus.textContent = "Daily report copied.";
+    try {
+      await navigator.clipboard.writeText(buildCopyText(data));
+      reportStatus.textContent = "Daily report copied.";
+    } catch (err) {
+      console.error("Copy error:", err);
+      reportStatus.textContent = "Clipboard blocked. Copy manually.";
+    }
   };
 }
 
@@ -166,17 +256,13 @@ async function loadDailyReport() {
     const response = await fetch(API_BASE, { cache: "no-store" });
     const result = await response.json();
 
-    console.log("API result:", result);
-
     if (!response.ok || !result.ok) {
-      reportStatus.textContent = result.message || "Could not load daily report.";
+      reportStatus.textContent = result.error || result.message || "Could not load daily report.";
       reportEl.innerHTML = "";
       return;
     }
 
     const data = parseReportData(result.data);
-    console.log("Parsed data:", data);
-
     renderDailyReport(data);
     reportStatus.textContent = `Daily report loaded. Total errors: ${data.totalErrors || 0}`;
   } catch (err) {
@@ -199,14 +285,15 @@ cancelResetBtn?.addEventListener("click", () => {
 });
 
 confirmResetBtn?.addEventListener("click", async () => {
+  const username = (resetUsernameInput?.value || "").trim();
   const password = (resetPasswordInput?.value || "").trim();
 
-  if (!password) {
-    resetMessage.textContent = "Password is required.";
+  if (!username || !password) {
+    resetMessage.textContent = "Username and password are required.";
     return;
   }
 
-  resetMessage.textContent = "Checking password...";
+  resetMessage.textContent = "Checking authorization...";
 
   try {
     const response = await fetch(`${API_BASE}/reset`, {
@@ -214,13 +301,16 @@ confirmResetBtn?.addEventListener("click", async () => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ password })
+      body: JSON.stringify({ username, password })
     });
 
     const result = await response.json();
 
     if (!response.ok || !result.ok) {
-      resetMessage.textContent = result.message || "Reset failed.";
+      resetMessage.textContent =
+        result.error ||
+        result.message ||
+        "Reset failed.";
       return;
     }
 

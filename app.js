@@ -47,7 +47,7 @@ import {
 const state = {
   previewRows: [],
   currentEditIndex: -1,
-  manualOverrides: {}
+  manualOverrides: []
 };
 
 const els = getDOMElements();
@@ -63,19 +63,201 @@ const IS_LOCAL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 
-const DAILY_REPORT_API = IS_LOCAL
-  ? "http://localhost:3002/api/daily-report/update"
-  : "https://lknzmzd-daily-report.onrender.com/api/daily-report/update";
+const API_BASE = IS_LOCAL
+  ? "http://localhost:3002"
+  : "https://lknzmzd-daily-report.onrender.com";
+
+const DAILY_REPORT_API = `${API_BASE}/api/daily-report/update`;
+const LOGIN_API = `${API_BASE}/api/auth/login`;
+const LOGOUT_API = `${API_BASE}/api/auth/logout`;
+const ME_API = `${API_BASE}/api/auth/me`;
+
+const SESSION_KEY = "daily_report_auth_session_v1";
+
+const sessionStatusEl = document.getElementById("sessionStatus");
+const logoutBtn = document.getElementById("logoutBtn");
+
+const loginModal = document.getElementById("loginModal");
+const loginUsernameInput = document.getElementById("loginUsernameInput");
+const loginPasswordInput = document.getElementById("loginPasswordInput");
+const confirmLoginBtn = document.getElementById("confirmLoginBtn");
+const cancelLoginBtn = document.getElementById("cancelLoginBtn");
+const loginMessage = document.getElementById("loginMessage");
+
+let pendingGenerateAfterLogin = false;
+
+function getStoredSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredSession(session) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+function clearStoredSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+function getAuthHeaders() {
+  const session = getStoredSession();
+  if (!session?.token) return {};
+  return {
+    Authorization: `Bearer ${session.token}`
+  };
+}
+
+function updateSessionUI() {
+  const session = getStoredSession();
+
+  if (session?.user) {
+    sessionStatusEl.textContent = `Logged in: ${session.user.name} (${session.user.role})`;
+    logoutBtn.style.display = "";
+  } else {
+    sessionStatusEl.textContent = "Not logged in";
+    logoutBtn.style.display = "none";
+  }
+}
+
+function openLoginModal() {
+  loginModal?.classList.remove("hidden");
+  loginUsernameInput.value = "";
+  loginPasswordInput.value = "";
+  loginMessage.textContent = "";
+}
+
+function closeLoginModal() {
+  loginModal?.classList.add("hidden");
+  loginMessage.textContent = "";
+}
+
+async function tryRestoreSession() {
+  const session = getStoredSession();
+  if (!session?.token) {
+    updateSessionUI();
+    return;
+  }
+
+  try {
+    const res = await fetch(ME_API, {
+      method: "GET",
+      headers: {
+        ...getAuthHeaders()
+      },
+      cache: "no-store"
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || !json.ok) {
+      clearStoredSession();
+    } else {
+      setStoredSession({
+        token: session.token,
+        user: json.user
+      });
+    }
+  } catch {
+    clearStoredSession();
+  }
+
+  updateSessionUI();
+}
+
+async function loginAndStoreSession(username, password) {
+  const res = await fetch(LOGIN_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    cache: "no-store",
+    body: JSON.stringify({ username, password })
+  });
+
+  const json = await res.json();
+
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || "Login failed");
+  }
+
+  setStoredSession({
+    token: json.token,
+    user: json.user
+  });
+
+  updateSessionUI();
+  return json.user;
+}
+
+async function handleLoginConfirm() {
+  const username = loginUsernameInput.value.trim();
+  const password = loginPasswordInput.value;
+
+  if (!username || !password) {
+    loginMessage.textContent = "Username and password are required.";
+    return;
+  }
+
+  loginMessage.textContent = "Checking login...";
+
+  try {
+    await loginAndStoreSession(username, password);
+    loginMessage.textContent = "Login successful ✅";
+
+    setTimeout(async () => {
+      closeLoginModal();
+
+      if (pendingGenerateAfterLogin) {
+        pendingGenerateAfterLogin = false;
+        await generate();
+      }
+    }, 300);
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    loginMessage.textContent = err.message || "Login failed.";
+  }
+}
+
+async function logoutCurrentUser() {
+  try {
+    await fetch(LOGOUT_API, {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+  } catch (err) {
+    console.error("LOGOUT ERROR:", err);
+  }
+
+  clearStoredSession();
+  updateSessionUI();
+  toast("Logged out");
+}
+
+async function ensureLoggedIn() {
+  const session = getStoredSession();
+  if (session?.token && session?.user) {
+    return true;
+  }
+
+  pendingGenerateAfterLogin = true;
+  openLoginModal();
+  return false;
+}
 
 async function pushDailyReportUpdate(previewRows) {
-  console.log("POSTING TO DAILY REPORT API:", DAILY_REPORT_API);
-  console.log("Preview rows being sent:", previewRows);
-
   const response = await fetch(DAILY_REPORT_API, {
     method: "POST",
     cache: "no-store",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...getAuthHeaders()
     },
     body: JSON.stringify({ previewRows })
   });
@@ -85,16 +267,16 @@ async function pushDailyReportUpdate(previewRows) {
 
   try {
     result = rawText ? JSON.parse(rawText) : {};
-  } catch (err) {
-    console.error("Daily report API returned non-JSON:", rawText);
+  } catch {
     throw new Error("Daily report API returned invalid JSON.");
   }
 
-  console.log("Daily report API response status:", response.status);
-  console.log("Daily report API response body:", result);
-
   if (!response.ok || !result.ok) {
-    throw new Error(result.message || `Could not update shared daily report. HTTP ${response.status}`);
+    throw new Error(
+      result.error ||
+      result.message ||
+      `Could not update shared daily report. HTTP ${response.status}`
+    );
   }
 
   return result;
@@ -167,6 +349,13 @@ function previewOnly() {
 }
 
 async function generate() {
+  const session = getStoredSession();
+  if (!session?.token) {
+    const ok = await ensureLoggedIn();
+    if (!ok) return;
+    return;
+  }
+
   const rawText = (els.raw.value || "").trim();
   if (!rawText) {
     toast("Raw input is empty");
@@ -191,8 +380,25 @@ async function generate() {
 
   const criticalRows = getCriticalRows(state.previewRows);
   if (criticalRows.length) {
-    console.warn("CRITICAL ROWS BLOCKED:", criticalRows);
     toast(`Blocked: ${criticalRows.length} row(s) have critical errors`);
+    return;
+  }
+
+  try {
+    await pushDailyReportUpdate(state.previewRows);
+  } catch (err) {
+    console.error("Failed to sync daily report:", err);
+
+    if (String(err.message || "").includes("Authentication required")) {
+      clearStoredSession();
+      updateSessionUI();
+      pendingGenerateAfterLogin = true;
+      openLoginModal();
+      toast("Session expired. Please login again.");
+      return;
+    }
+
+    toast(err.message || "Authorization failed");
     return;
   }
 
@@ -220,15 +426,6 @@ async function generate() {
         source: "manual-ui"
       })
     });
-  }
-
-  try {
-    console.log("ABOUT TO SYNC DAILY REPORT");
-    await pushDailyReportUpdate(state.previewRows);
-    console.log("Daily report synced to server ✅");
-  } catch (err) {
-    console.error("Failed to sync daily report:", err);
-    toast("Generated ✅ but shared Daily Report sync failed");
   }
 
   updateShiftLabel();
@@ -334,6 +531,20 @@ function bindEvents() {
     toast("Shift stats cleared ✅");
   });
 
+  logoutBtn?.addEventListener("click", logoutCurrentUser);
+  confirmLoginBtn?.addEventListener("click", handleLoginConfirm);
+  cancelLoginBtn?.addEventListener("click", () => {
+    pendingGenerateAfterLogin = false;
+    closeLoginModal();
+  });
+
+  loginModal?.addEventListener("click", (e) => {
+    if (e.target === loginModal) {
+      pendingGenerateAfterLogin = false;
+      closeLoginModal();
+    }
+  });
+
   els.raw?.addEventListener("input", updateUIStates);
   els.out?.addEventListener("input", updateUIStates);
 
@@ -344,7 +555,7 @@ function bindEvents() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   if (!els.date.value.trim()) {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -353,11 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
     els.date.value = `${yyyy}/${mm}/${dd}`;
   }
 
-  console.log("Robot Incident Processing System loaded ✅");
-  console.log("Environment:", IS_LOCAL ? "LOCAL" : "PRODUCTION");
-  console.log("Daily report update API:", DAILY_REPORT_API);
-
   bindEvents();
+  await tryRestoreSession();
   updateShiftLabel();
   updateUIStates();
   initTemplatesUI();
