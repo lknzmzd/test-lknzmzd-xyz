@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daily Report</title>
-  <link rel="stylesheet" href="./styles.css?v=10" />
+  <link rel="stylesheet" href="./styles.css?v=11" />
 </head>
 <body>
   <main class="daily-report-page">
@@ -12,20 +12,42 @@
       <h1>Daily Report</h1>
       <p id="reportDate"></p>
 
+      <section class="status-strip">
+        <div class="status-item">
+          <div class="status-label">SYSTEM STATUS</div>
+          <div id="systemStatusValue" class="status-value status-live">Active</div>
+        </div>
+
+        <div class="status-item">
+          <div class="status-label">LAST UPDATE</div>
+          <div id="statusLastUpdate" class="status-value">—</div>
+        </div>
+
+        <div class="status-item">
+          <div class="status-label">CURRENT TOTAL</div>
+          <div id="statusCurrentTotal" class="status-value">0</div>
+        </div>
+
+        <div class="status-item">
+          <div class="status-label">LAST ADDED BY</div>
+          <div id="statusLastAddedBy" class="status-value">—</div>
+        </div>
+      </section>
+
       <div id="dailyReportContainer" class="daily-report-output"></div>
 
       <div class="report-actions">
-        <button id="copyDailyReportBtn" type="button">Copy Daily Report</button>
-        <button id="saveReportBtn" type="button">Refresh Report</button>
-        <button id="resetReportBtn" type="button">Reset Report</button>
+        <button id="copyDailyReportBtn" class="btn btn-copy" type="button">Copy Daily Report</button>
+        <button id="saveReportBtn" class="btn btn-refresh" type="button">Refresh Report</button>
+        <button id="resetReportBtn" class="btn btn-reset" type="button">Reset Report</button>
       </div>
 
       <p id="reportStatus">No updates yet.</p>
 
-      <hr style="margin:20px 0; opacity:.2;" />
+      <hr class="report-divider" />
 
       <section>
-        <h2 style="margin-bottom:10px;">Activity Summary</h2>
+        <h2 class="section-title">Activity Summary</h2>
         <p><strong>Last added by:</strong> <span id="lastAddedBy">—</span></p>
         <p><strong>Last added at:</strong> <span id="lastAddedAt">—</span></p>
         <p><strong>Last reset by:</strong> <span id="lastResetBy">—</span></p>
@@ -33,18 +55,18 @@
         <p><strong>Last reset IP:</strong> <span id="lastResetIp">—</span></p>
       </section>
 
-      <hr style="margin:20px 0; opacity:.2;" />
+      <hr class="report-divider" />
 
       <section>
-        <h2 style="margin-bottom:10px;">Add History</h2>
-        <div id="addHistoryList">No add history yet.</div>
+        <h2 class="section-title">Add History</h2>
+        <div id="addHistoryList" class="history-box empty-state">No add history yet.</div>
       </section>
 
-      <hr style="margin:20px 0; opacity:.2;" />
+      <hr class="report-divider" />
 
       <section>
-        <h2 style="margin-bottom:10px;">Reset History</h2>
-        <div id="resetHistoryList">No reset history yet.</div>
+        <h2 class="section-title">Reset History</h2>
+        <div id="resetHistoryList" class="history-box empty-state">No reset history yet.</div>
       </section>
     </section>
 
@@ -54,14 +76,14 @@
         <input id="resetUsernameInput" type="text" placeholder="Leader username" autocomplete="username" />
         <input id="resetPasswordInput" type="password" placeholder="Password" autocomplete="current-password" />
         <div class="report-actions">
-          <button id="confirmResetBtn" type="button">Confirm Reset</button>
-          <button id="cancelResetBtn" type="button">Cancel</button>
+          <button id="confirmResetBtn" class="btn btn-reset" type="button">Confirm Reset</button>
+          <button id="cancelResetBtn" class="btn btn-refresh" type="button">Cancel</button>
         </div>
         <p id="resetMessage"></p>
       </div>
     </div>
   </main>
 
-  <script type="module" src="./daily-report.js?v=10"></script>
+  <script type="module" src="./daily-report.js?v=11"></script>
 </body>
 </html>

@@ -21,6 +21,11 @@ const lastResetIpEl = document.getElementById("lastResetIp");
 const addHistoryListEl = document.getElementById("addHistoryList");
 const resetHistoryListEl = document.getElementById("resetHistoryList");
 
+const systemStatusValueEl = document.getElementById("systemStatusValue");
+const statusLastUpdateEl = document.getElementById("statusLastUpdate");
+const statusCurrentTotalEl = document.getElementById("statusCurrentTotal");
+const statusLastAddedByEl = document.getElementById("statusLastAddedBy");
+
 const IS_LOCAL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
@@ -54,7 +59,7 @@ function formatDateTime(value) {
 function renderList(title, entries) {
   const items = entries.length
     ? entries.map(([k, v]) => `<li><code>${escapeHtml(k)}</code> → <b>${v}</b></li>`).join("")
-    : "<li>—</li>";
+    : `<li class="empty-item">—</li>`;
 
   return `
     <div style="margin-top:10px;"><b>${escapeHtml(title)}</b></div>
@@ -66,9 +71,14 @@ function renderHistoryList(container, items, mode) {
   if (!container) return;
 
   if (!Array.isArray(items) || !items.length) {
-    container.innerHTML = mode === "add" ? "No add history yet." : "No reset history yet.";
+    container.className = "history-box empty-state";
+    container.innerHTML = mode === "add"
+      ? `<div class="empty-title">No add history yet</div><div class="empty-subtitle">New add actions will appear here.</div>`
+      : `<div class="empty-title">No reset history yet</div><div class="empty-subtitle">Reset actions will appear here after the first authorized reset.</div>`;
     return;
   }
+
+  container.className = "history-box";
 
   container.innerHTML = `
     <ul class="advList">
@@ -195,6 +205,26 @@ function buildCopyText(data) {
   ].join("\n");
 }
 
+function renderTopStatus(data) {
+  const currentTotal = Number(data.totalErrors || 0);
+  const lastUpdate = formatDateTime(data.updatedAt);
+  const lastAddedBy = data.lastAddedName
+    ? `${data.lastAddedName} (${data.lastAddedBy || "—"})`
+    : (data.lastAddedBy || "—");
+
+  statusCurrentTotalEl.textContent = String(currentTotal);
+  statusLastUpdateEl.textContent = lastUpdate;
+  statusLastAddedByEl.textContent = lastAddedBy;
+
+  if (currentTotal > 0) {
+    systemStatusValueEl.textContent = "Active";
+    systemStatusValueEl.className = "status-value status-live";
+  } else {
+    systemStatusValueEl.textContent = "Standby";
+    systemStatusValueEl.className = "status-value status-idle";
+  }
+}
+
 function renderDailyReport(data) {
   const firstAdded = formatDateTime(data.firstAddedAt);
   const updated = formatDateTime(data.updatedAt);
@@ -217,6 +247,8 @@ function renderDailyReport(data) {
     ${renderList("Top 5 Rule Labels", topN(data.byRuleLabel || {}, 5))}
     ${renderList("Confidence distribution", topN(data.byConfidence || {}, 5))}
   `;
+
+  renderTopStatus(data);
 
   if (lastAddedByEl) {
     lastAddedByEl.textContent = data.lastAddedName
