@@ -18,10 +18,15 @@ console.log("DAILY REPORT SERVER ACTIVE ✅");
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dataDir = path.join(process.env.LOCALAPPDATA || __dirname, "lknzmzd");
+const dataDir = process.env.RENDER
+  ? "/data"
+  : path.join(process.env.LOCALAPPDATA || __dirname, "lknzmzd");
+
 fs.mkdirSync(dataDir, { recursive: true });
 
 const DATA_FILE = path.join(dataDir, "daily-report-data.json");
+
+
 const RESET_PASSWORD = process.env.RESET_PASSWORD || "";
 
 function createEmptyStore() {
