@@ -85,6 +85,7 @@ const cancelLoginBtn = document.getElementById("cancelLoginBtn");
 const loginMessage = document.getElementById("loginMessage");
 
 let pendingGenerateAfterLogin = false;
+let isBusy = false;
 
 function getStoredSession() {
   try {
@@ -134,6 +135,29 @@ function openLoginModal() {
 function closeLoginModal() {
   loginModal?.classList.add("hidden");
   loginMessage.textContent = "";
+}
+
+function setBusy(nextBusy, label = "Processing...") {
+  isBusy = Boolean(nextBusy);
+
+  const previewBtn = document.getElementById("previewBtn");
+  const genBtn = document.getElementById("gen");
+  const copyBtn = document.getElementById("copy");
+  const downloadBtn = document.getElementById("download");
+
+  [previewBtn, genBtn, copyBtn, downloadBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = isBusy;
+    btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
+  });
+
+  if (previewBtn) {
+    previewBtn.textContent = isBusy ? label : previewBtn.dataset.originalText;
+  }
+
+  if (genBtn) {
+    genBtn.textContent = isBusy ? label : genBtn.dataset.originalText;
+  }
 }
 
 async function tryRestoreSession() {
@@ -299,8 +323,8 @@ function validateRawInput() {
   return validation;
 }
 
-function buildPreviewRecordsLocal() {
-  const rows = buildPreviewRecords({
+async function buildPreviewRecordsLocal() {
+  const rows = await buildPreviewRecords({
     rawText: els.raw.value || "",
     date: els.date.value.trim(),
     fallbackDeviceType: els.deviceType.value.trim() || DEFAULTS.deviceType,
@@ -334,7 +358,9 @@ function rerenderPreview() {
   });
 }
 
-function previewOnly() {
+async function previewOnly() {
+  if (isBusy) return;
+
   const rawText = (els.raw.value || "").trim();
   if (!rawText) {
     toast("Raw input is empty");
@@ -342,13 +368,24 @@ function previewOnly() {
     return;
   }
 
-  state.previewRows = buildPreviewRecordsLocal();
-  rerenderPreview();
-  updateUIStates();
-  toast("Preview ready ✅");
+  setBusy(true, "Previewing...");
+
+  try {
+    state.previewRows = await buildPreviewRecordsLocal();
+    rerenderPreview();
+    updateUIStates();
+    toast("Preview ready ✅");
+  } catch (err) {
+    console.error("PREVIEW ERROR:", err);
+    toast(err.message || "Preview failed");
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function generate() {
+  if (isBusy) return;
+
   const session = getStoredSession();
   if (!session?.token) {
     const ok = await ensureLoggedIn();
@@ -369,69 +406,81 @@ async function generate() {
     return;
   }
 
-  state.previewRows = buildPreviewRecordsLocal();
-
-  state.previewRows = state.previewRows.map(row =>
-    correctionEngine.applyManualOverrideToRow(row)
-  );
-  state.previewRows = finalizePreviewRows(state.previewRows);
-
-  rerenderPreview();
-
-  const criticalRows = getCriticalRows(state.previewRows);
-  if (criticalRows.length) {
-    toast(`Blocked: ${criticalRows.length} row(s) have critical errors`);
-    return;
-  }
+  setBusy(true, "Generating...");
 
   try {
-    await pushDailyReportUpdate(state.previewRows);
-  } catch (err) {
-    console.error("Failed to sync daily report:", err);
+    state.previewRows = await buildPreviewRecordsLocal();
 
-    if (String(err.message || "").includes("Authentication required")) {
-      clearStoredSession();
-      updateSessionUI();
-      pendingGenerateAfterLogin = true;
-      openLoginModal();
-      toast("Session expired. Please login again.");
+    state.previewRows = state.previewRows.map(row =>
+      correctionEngine.applyManualOverrideToRow(row)
+    );
+    state.previewRows = finalizePreviewRows(state.previewRows);
+
+    rerenderPreview();
+
+    const criticalRows = getCriticalRows(state.previewRows);
+    if (criticalRows.length) {
+      toast(`Blocked: ${criticalRows.length} row(s) have critical errors`);
       return;
     }
 
-    toast(err.message || "Authorization failed");
-    return;
-  }
+    try {
+      await pushDailyReportUpdate(state.previewRows);
+    } catch (err) {
+      console.error("Failed to sync daily report:", err);
 
-  rebuildOutputFromPreviewRows({
-    rows: state.previewRows,
-    date: els.date.value.trim(),
-    outElement: els.out
-  });
+      if (String(err.message || "").includes("Authentication required")) {
+        clearStoredSession();
+        updateSessionUI();
+        pendingGenerateAfterLogin = true;
+        openLoginModal();
+        toast("Session expired. Please login again.");
+        return;
+      }
 
-  const finalText = els.out.value;
-  const semanticSignature = buildSemanticSignature(state.previewRows, els.date.value.trim());
-  const isNewExport = markShiftExportIfNew(finalText, semanticSignature);
+      toast(err.message || "Authorization failed");
+      return;
+    }
 
-  if (isNewExport) {
-    addRowsToShift(state.previewRows.length);
-    updateShiftStatsFromPreviewRows(state.previewRows);
-
-    historyModule.saveSession({
+    rebuildOutputFromPreviewRows({
+      rows: state.previewRows,
       date: els.date.value.trim(),
-      totalRows: state.previewRows.length,
-      rawInput: els.raw.value,
-      output: finalText,
-      relay: buildRelayPayload(state.previewRows, {
-        date: els.date.value.trim(),
-        source: "manual-ui"
-      })
+      outElement: els.out
     });
-  }
 
-  updateShiftLabel();
-  renderAdvanced(els.advBox);
-  updateUIStates();
-  toast(isNewExport ? "Generated ✅" : "Generated ✅ (stats not re-counted)");
+    const finalText = els.out.value;
+    const semanticSignature = buildSemanticSignature(
+      state.previewRows,
+      els.date.value.trim()
+    );
+    const isNewExport = markShiftExportIfNew(finalText, semanticSignature);
+
+    if (isNewExport) {
+      addRowsToShift(state.previewRows.length);
+      updateShiftStatsFromPreviewRows(state.previewRows);
+
+      historyModule.saveSession({
+        date: els.date.value.trim(),
+        totalRows: state.previewRows.length,
+        rawInput: els.raw.value,
+        output: finalText,
+        relay: buildRelayPayload(state.previewRows, {
+          date: els.date.value.trim(),
+          source: "manual-ui"
+        })
+      });
+    }
+
+    updateShiftLabel();
+    renderAdvanced(els.advBox);
+    updateUIStates();
+    toast(isNewExport ? "Generated ✅" : "Generated ✅ (stats not re-counted)");
+  } catch (err) {
+    console.error("GENERATE ERROR:", err);
+    toast(err.message || "Generate failed");
+  } finally {
+    setBusy(false);
+  }
 }
 
 function updateUIStates() {
@@ -488,20 +537,32 @@ function handleApplyEdit() {
 }
 
 function bindEvents() {
-  document.getElementById("previewBtn")?.addEventListener("click", previewOnly);
-  document.getElementById("gen")?.addEventListener("click", generate);
+  document.getElementById("previewBtn")?.addEventListener("click", () => {
+    previewOnly();
+  });
+
+  document.getElementById("gen")?.addEventListener("click", () => {
+    generate();
+  });
+
   document.getElementById("copy")?.addEventListener("click", handleCopyTSV);
   document.getElementById("download")?.addEventListener("click", handleDownloadTSV);
   document.getElementById("loadExample")?.addEventListener("click", loadExample);
 
   document.getElementById("applyEdit")?.addEventListener("click", handleApplyEdit);
-  document.getElementById("cancelEdit")?.addEventListener("click", () => closeEditPanel({ state, els }));
+  document.getElementById("cancelEdit")?.addEventListener("click", () =>
+    closeEditPanel({ state, els })
+  );
 
   ["editDeviceNo", "editIssueDesc", "editRecovery", "editStartTime", "editMinutes"].forEach(id => {
-    document.getElementById(id)?.addEventListener("input", () => refreshEditOperatorSentence({ els }));
+    document.getElementById(id)?.addEventListener("input", () =>
+      refreshEditOperatorSentence({ els })
+    );
   });
 
   document.getElementById("clear")?.addEventListener("click", () => {
+    if (isBusy) return;
+
     els.raw.value = "";
     els.out.value = "";
     state.previewRows = [];
@@ -513,12 +574,15 @@ function bindEvents() {
   });
 
   document.getElementById("resetRows")?.addEventListener("click", () => {
+    if (isBusy) return;
     resetShiftRows();
     updateShiftLabel();
     toast("Shift rows reset ✅");
   });
 
-  document.getElementById("refreshAdvanced")?.addEventListener("click", () => renderAdvanced(els.advBox));
+  document.getElementById("refreshAdvanced")?.addEventListener("click", () =>
+    renderAdvanced(els.advBox)
+  );
 
   document.getElementById("copyAdvanced")?.addEventListener("click", async () => {
     const ok = await copyAdvancedText();
@@ -526,6 +590,7 @@ function bindEvents() {
   });
 
   document.getElementById("clearShiftStats")?.addEventListener("click", () => {
+    if (isBusy) return;
     clearCurrentShiftStats();
     renderAdvanced(els.advBox);
     toast("Shift stats cleared ✅");

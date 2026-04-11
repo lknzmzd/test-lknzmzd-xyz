@@ -8,7 +8,7 @@ import {
   normalizeDeviceNoForColumn,
   normalizePreviewRow
 } from "../parser.js";
-import { classify } from "../classifier.js";
+import { classifyWithFallback } from "../classifier.js";
 
 function buildRowKey({ recIdx, deviceNo, startTime, rawLine }) {
   return [
@@ -19,7 +19,7 @@ function buildRowKey({ recIdx, deviceNo, startTime, rawLine }) {
   ].join("||");
 }
 
-export function buildPreviewRecords({
+export async function buildPreviewRecords({
   rawText,
   date,
   fallbackDeviceType,
@@ -34,11 +34,11 @@ export function buildPreviewRecords({
   const recs = splitIntoRecords(trimmed);
   const preview = [];
 
-  recs.forEach((rec, recIdx) => {
+  for (const [recIdx, rec] of recs.entries()) {
     const processed = preprocessLine(rec.line);
     const startTime = extractTime(processed);
 
-    const c = classify(processed, {
+    const c = await classifyWithFallback(processed, {
       defaultRecovery: tempMeasuresDefault,
       defaultMin
     });
@@ -80,10 +80,10 @@ export function buildPreviewRecords({
       }, defaultMin);
 
       preview.push(row);
-      return;
+      continue;
     }
 
-    deviceNosRaw.forEach(raw => {
+    for (const raw of deviceNosRaw) {
       const deviceNo = normalizeDeviceNoForColumn(raw);
       const deviceType = inferDeviceTypeFromNo(raw, fallbackDeviceType);
 
@@ -91,7 +91,14 @@ export function buildPreviewRecords({
       const criticalErrors = [];
 
       if (!startTime) warnings.push("Missing time");
-      if (c.ruleId === "fallback_default") warnings.push("Not matched classification");
+
+      if (c.ruleId === "fallback_default") {
+        warnings.push("Not matched classification");
+      }
+
+      if (c.ruleId === "ai_fallback") {
+        warnings.push("AI fallback classification");
+      }
 
       if (!deviceNo) {
         warnings.push("Device number unresolved");
@@ -131,9 +138,12 @@ export function buildPreviewRecords({
       }, defaultMin);
 
       preview.push(row);
-    });
-  });
+    }
+  }
 
-  const previewWithOverrides = preview.map(row => correctionEngine.applyManualOverrideToRow(row));
+  const previewWithOverrides = preview.map(row =>
+    correctionEngine.applyManualOverrideToRow(row)
+  );
+
   return previewWithOverrides;
 }

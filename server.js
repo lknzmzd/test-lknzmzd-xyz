@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import OpenAI from "openai";
 import { fileURLToPath } from "url";
 import { USERS } from "./users.js";
 
@@ -16,6 +17,10 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 console.log("DAILY REPORT SERVER ACTIVE ✅");
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +127,203 @@ function getSessionUser(req) {
   const session = sessions.get(token);
   if (!session) return null;
   return session.user;
+}
+
+function safeString(value, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function safePositiveNumber(value, fallback = 15) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+const VALID_ISSUE_TYPES = new Set([
+  "Equipment",
+  "Operation",
+  "Infrastructure",
+  "Safety",
+  "Unknown"
+]);
+
+const VALID_QUICK = new Set([
+  "Unable to drive",
+  "Charging failure",
+  "Collision",
+  "Take failed",
+  "Place failed",
+  "Safety event",
+  "Power issue",
+  "Unknown"
+]);
+
+const VALID_SUB = new Set([
+  "Cannot locate",
+  "Parameter error",
+  "Obstacle",
+  "Battery issue",
+  "Navigation issue",
+  "Sensor issue",
+  "Unknown"
+]);
+
+function validateClassificationShape(data, defaults = {}) {
+  if (!data || typeof data !== "object") return null;
+
+  const issueDesc = safeString(data.issueDesc);
+  if (!issueDesc) return null;
+
+  const issueType = VALID_ISSUE_TYPES.has(data.issueType)
+    ? data.issueType
+    : (defaults.baseResult?.issueType || "Equipment");
+
+  const quick = VALID_QUICK.has(data.quick)
+    ? data.quick
+    : (defaults.baseResult?.quick || "Unable to drive");
+
+  const subType = VALID_SUB.has(data.subType)
+    ? data.subType
+    : (defaults.baseResult?.subType || "Cannot locate");
+
+  const recovery = safeString(
+    data.recovery,
+    defaults.defaultRecovery || "Checked issue and recovered equipment"
+  );
+
+  const minutes = safePositiveNumber(
+    data.minutes,
+    safePositiveNumber(defaults.defaultMin, 15)
+  );
+
+  return {
+    issueType,
+    quick,
+    subType,
+    issueDesc,
+    recovery,
+    minutes
+  };
+}
+
+function extractJsonObject(text) {
+  if (!text || typeof text !== "string") return null;
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return null;
+  }
+
+  const raw = text.slice(firstBrace, lastBrace + 1);
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function classifyIncidentWithAI({
+  line,
+  defaultRecovery,
+  defaultMin,
+  baseResult
+}) {
+  const systemPrompt = `
+You are a warehouse robotics incident classifier.
+
+Return ONLY valid JSON.
+Do not add markdown.
+Do not add explanation.
+Do not add extra text.
+
+Use this exact JSON schema:
+{
+  "issueType": string,
+  "quick": string,
+  "subType": string,
+  "issueDesc": string,
+  "recovery": string,
+  "minutes": number
+}
+
+Allowed issueType values:
+- Equipment
+- Operation
+- Infrastructure
+- Safety
+- Unknown
+
+Allowed quick values:
+- Unable to drive
+- Charging failure
+- Collision
+- Take failed
+- Place failed
+- Safety event
+- Power issue
+- Unknown
+
+Allowed subType values:
+- Cannot locate
+- Parameter error
+- Obstacle
+- Battery issue
+- Navigation issue
+- Sensor issue
+- Unknown
+
+Rules:
+- Keep issueDesc concise and operator-friendly
+- recovery must be short and practical
+- minutes must be a positive integer
+- Prefer the closest allowed category
+- If uncertain, use the provided baseResult categories
+`;
+
+  const userPrompt = `
+Raw line:
+${line}
+
+Default recovery:
+${defaultRecovery || "Checked issue and recovered equipment"}
+
+Default minutes:
+${safePositiveNumber(defaultMin, 15)}
+
+Base result:
+${JSON.stringify(baseResult || {}, null, 2)}
+
+Return JSON only.
+`;
+
+  const response = await openai.responses.create({
+    model: "gpt-4.1-mini",
+    input: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: userPrompt
+      }
+    ]
+  });
+
+  const outputText =
+    response.output_text ||
+    response.output?.map(part => part?.content?.map(c => c?.text || "").join("")).join("") ||
+    "";
+
+  const parsed = extractJsonObject(outputText);
+
+  return validateClassificationShape(parsed, {
+    defaultRecovery,
+    defaultMin,
+    baseResult
+  });
 }
 
 app.get("/", (_req, res) => {
@@ -338,6 +540,45 @@ app.post("/api/daily-report/reset", (req, res) => {
     res.status(500).json({
       ok: false,
       error: "Failed to reset daily report"
+    });
+  }
+});
+
+app.post("/api/classify", async (req, res) => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({
+        error: "OPENAI_API_KEY is missing on server"
+      });
+    }
+
+    const { line, defaultRecovery, defaultMin, baseResult } = req.body || {};
+
+    const safeLine = safeString(line);
+    if (!safeLine) {
+      return res.status(400).json({
+        error: "line is required"
+      });
+    }
+
+    const classification = await classifyIncidentWithAI({
+      line: safeLine,
+      defaultRecovery: safeString(defaultRecovery, "Checked issue and recovered equipment"),
+      defaultMin: safePositiveNumber(defaultMin, 15),
+      baseResult: baseResult && typeof baseResult === "object" ? baseResult : null
+    });
+
+    if (!classification) {
+      return res.status(422).json({
+        error: "Could not produce valid classification"
+      });
+    }
+
+    res.json(classification);
+  } catch (err) {
+    console.error("AI CLASSIFY ERROR:", err);
+    res.status(500).json({
+      error: "AI classification failed"
     });
   }
 });

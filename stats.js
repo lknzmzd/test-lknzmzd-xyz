@@ -121,7 +121,7 @@ export function renderAdvanced(targetEl){
       <div><b>Last update:</b> ${esc(updated)}</div>
     </div>
     ${renderList("Top 5 Issue Description", topN(b.byIssueDesc || {}, 5))}
-    ${renderList("Top 5 Device No", topN(b.byDeviceNo || {}, 5))}
+    ${renderList("Top 10 Device No", topN(b.byDeviceNo || {}, 10))}
     ${renderList("Top 5 Quick Classification", topN(b.byQuick || {}, 5))}
     ${renderList("Top 5 Issue Type", topN(b.byIssueType || {}, 5))}
     ${renderList("Top 5 Device Type", topN(b.byDeviceType || {}, 5))}
@@ -151,7 +151,7 @@ export async function copyAdvancedText(){
     `Last update: ${updated}`,
     "",
     fmtTop("Top 5 Issue Description", b.byIssueDesc),
-    fmtTop("Top 5 Device No", b.byDeviceNo),
+    fmtTop("Top 10 Device No", b.byDeviceNo),
     fmtTop("Top 5 Device Type", b.byDeviceType),
     fmtTop("Top 5 Quick Classification", b.byQuick),
     fmtTop("Top 5 Issue Type", b.byIssueType),
